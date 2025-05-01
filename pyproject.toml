@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jax-flax-tpu-training"
+version = "0.1.0"
+description = "ViT-B/16 training in JAX/Flax on TPU v4 with pjit mesh sharding"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Sudhanshu Srivastava" }]
+
+dependencies = [
+    "jax==0.4.35",
+    "jaxlib==0.4.35",
+    "flax==0.10.2",
+    "optax==0.2.4",
+    "chex==0.1.87",
+    "orbax-checkpoint==0.10.1",
+    "tensorflow-datasets==4.9.7",
+    "wandb==0.19.6",
+    "numpy==2.2.4",
+    "pillow==11.1.0",
+    "gcsfs==2025.2.0",
+    "tqdm==4.67.1",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+tpu = [
+    # install via: pip install "jax[tpu]==0.4.35" -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
+]
+torch-xla = [
+    "torch==2.5.1",
+    "torch-xla==2.5.1",
+    "torchvision==0.20.1",
+]
+dev = [
+    "pytest==8.3.4",
+    "pytest-xdist",
+    "ruff",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
