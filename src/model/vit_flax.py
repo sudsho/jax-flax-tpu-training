@@ -71,14 +71,43 @@ class LearnablePosEmbed(nnx.Module):
         return x + self.pos.value
 
 
+class MLP(nnx.Module):
+    def __init__(self, cfg: ViTConfig, *, rngs: nnx.Rngs) -> None:
+        self.fc1 = nnx.Linear(cfg.hidden_size, cfg.mlp_dim, use_bias=cfg.use_bias, rngs=rngs)
+        self.fc2 = nnx.Linear(cfg.mlp_dim, cfg.hidden_size, use_bias=cfg.use_bias, rngs=rngs)
+        self.drop = nnx.Dropout(cfg.dropout_rate, rngs=rngs)
+
+    def __call__(self, x: jax.Array, *, deterministic: bool = True) -> jax.Array:
+        x = self.fc1(x)
+        x = nnx.gelu(x, approximate=True)
+        x = self.drop(x, deterministic=deterministic)
+        x = self.fc2(x)
+        x = self.drop(x, deterministic=deterministic)
+        return x
+
+
 class EncoderBlock(nnx.Module):
     """A single transformer encoder block: prenorm attn + prenorm mlp."""
 
     def __init__(self, cfg: ViTConfig, *, rngs: nnx.Rngs) -> None:
         self.cfg = cfg
         self.ln1 = nnx.LayerNorm(cfg.hidden_size, rngs=rngs)
+        self.attn = nnx.MultiHeadAttention(
+            num_heads=cfg.num_heads,
+            in_features=cfg.hidden_size,
+            qkv_features=cfg.hidden_size,
+            out_features=cfg.hidden_size,
+            dropout_rate=cfg.attention_dropout_rate,
+            use_bias=cfg.use_bias,
+            rngs=rngs,
+        )
         self.ln2 = nnx.LayerNorm(cfg.hidden_size, rngs=rngs)
+        self.mlp = MLP(cfg, rngs=rngs)
 
-    def __call__(self, x: jax.Array, *, deterministic: bool = True) -> jax.Array:  # noqa: ARG002
-        # attention + mlp land in a follow-up commit
-        return x + self.ln2(self.ln1(x))
+    def __call__(self, x: jax.Array, *, deterministic: bool = True) -> jax.Array:
+        y = self.ln1(x)
+        y = self.attn(y, y, deterministic=deterministic)
+        x = x + y
+        y = self.ln2(x)
+        y = self.mlp(y, deterministic=deterministic)
+        return x + y
