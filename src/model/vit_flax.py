@@ -111,3 +111,51 @@ class EncoderBlock(nnx.Module):
         y = self.ln2(x)
         y = self.mlp(y, deterministic=deterministic)
         return x + y
+
+
+class ViT(nnx.Module):
+    """ViT-B/16.
+
+    Forward:
+        [B, H, W, 3]  ->  patchify  ->  [B, N, D]
+        prepend cls    ->  [B, N+1, D]
+        + pos emb      ->  [B, N+1, D]
+        L x encoder    ->  [B, N+1, D]
+        LN + head(cls) ->  [B, num_classes]
+    """
+
+    def __init__(self, cfg: ViTConfig, *, rngs: nnx.Rngs) -> None:
+        self.cfg = cfg
+        self.patch_embed = PatchEmbed(cfg, rngs=rngs)
+        self.pos_embed = LearnablePosEmbed(cfg, rngs=rngs)
+        self.drop = nnx.Dropout(cfg.dropout_rate, rngs=rngs)
+        self.blocks = [EncoderBlock(cfg, rngs=rngs) for _ in range(cfg.num_layers)]
+        self.ln = nnx.LayerNorm(cfg.hidden_size, rngs=rngs)
+        self.head = nnx.Linear(
+            cfg.hidden_size, cfg.num_classes, use_bias=True, rngs=rngs
+        )
+
+    def __call__(self, x: jax.Array, *, deterministic: bool = True) -> jax.Array:
+        x = self.patch_embed(x)
+        x = self.pos_embed(x)
+        x = self.drop(x, deterministic=deterministic)
+        for blk in self.blocks:
+            x = blk(x, deterministic=deterministic)
+        x = self.ln(x)
+        cls = x[:, 0]
+        return self.head(cls)
+
+
+def vit_b16(num_classes: int = 1000, *, rngs: nnx.Rngs) -> ViT:
+    return ViT(ViTConfig(num_classes=num_classes), rngs=rngs)
+
+
+def vit_s16(num_classes: int = 1000, *, rngs: nnx.Rngs) -> ViT:
+    cfg = ViTConfig(
+        num_classes=num_classes,
+        hidden_size=384,
+        num_layers=12,
+        num_heads=6,
+        mlp_dim=1536,
+    )
+    return ViT(cfg, rngs=rngs)
