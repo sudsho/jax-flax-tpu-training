@@ -55,5 +55,14 @@ def load_imagenette(
 
 
 def as_numpy_iterator(ds: tf.data.Dataset) -> Iterator[tuple[np.ndarray, np.ndarray]]:
+    """Yield (images, labels) as numpy arrays. Handles both dict and tuple outputs."""
     for batch in tfds.as_numpy(ds):
-        yield batch
+        if isinstance(batch, dict):
+            yield batch["image"], batch["label"]
+        else:
+            yield batch
+
+
+def steps_per_epoch(batch_size: int, split: str = "train") -> int:
+    n = IMAGENETTE_TRAIN_SIZE if split == "train" else IMAGENETTE_VAL_SIZE
+    return n // batch_size
