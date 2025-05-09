@@ -67,3 +67,21 @@ def shard_pytree_like(
         return jax.device_put(x, sharding.get("*"))
 
     return jax.tree_util.tree_map_with_path(_put, tree)
+
+
+# ---- convenience specs for common tensors --------------------------------
+def images_batch_spec() -> P:
+    """[B, H, W, C] with B split across data axis."""
+    return P(AXIS_DATA, None, None, None)
+
+
+def labels_batch_spec() -> P:
+    """[B] or [B, K] with B split across data axis."""
+    return P(AXIS_DATA)
+
+
+def batch_specs() -> dict[str, P]:
+    return {
+        "image": images_batch_spec(),
+        "label": labels_batch_spec(),
+    }
