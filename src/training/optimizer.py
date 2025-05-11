@@ -42,6 +42,7 @@ def cosine_schedule_with_warmup(
     total_steps: int,
     end_lr: float = 0.0,
 ) -> optax.Schedule:
+    """Standard linear-warmup + cosine-to-end_lr schedule."""
     return optax.join_schedules(
         [
             optax.linear_schedule(0.0, base_lr, warmup_steps),
@@ -50,6 +51,25 @@ def cosine_schedule_with_warmup(
             ),
         ],
         [warmup_steps],
+    )
+
+
+def wsd_schedule(
+    *,
+    base_lr: float,
+    warmup_steps: int,
+    stable_steps: int,
+    decay_steps: int,
+    end_lr: float = 0.0,
+) -> optax.Schedule:
+    """Warmup-stable-decay, sometimes preferred for ViT continual training."""
+    return optax.join_schedules(
+        [
+            optax.linear_schedule(0.0, base_lr, warmup_steps),
+            optax.constant_schedule(base_lr),
+            optax.linear_schedule(base_lr, end_lr, decay_steps),
+        ],
+        [warmup_steps, warmup_steps + stable_steps],
     )
 
 
