@@ -28,7 +28,7 @@ from src.data.preprocess import train_preprocess, val_preprocess
 from src.model.vit_flax import ViT, ViTConfig
 from src.parallelism.mesh import AXIS_DATA, build_mesh, describe, MeshConfig
 from src.parallelism.sharding import replicated, batch_sharding
-from src.training.optimizer import build_optimizer, EMA
+from src.training.optimizer import build_optimizer, EMA, flatten_grads_norm
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -113,7 +113,8 @@ def train_step(
     updates, new_opt = tx.update(grads, opt_state, nnx.state(model))
     new_state = optax.apply_updates(nnx.state(model), updates)
     _ = dropout_key  # currently unused; wire when we add stochastic depth
-    return new_state, new_opt, loss
+    g_norm = flatten_grads_norm(grads)
+    return new_state, new_opt, loss, g_norm
 
 
 def eval_step(graphdef, state, batch, num_classes: int):
@@ -177,7 +178,7 @@ def main(argv: list[str] | None = None) -> None:
                 smoothing=cfg["train"].get("label_smoothing", 0.1),
             ),
             in_shardings=(params_sharding, params_sharding, batch_sh, None),
-            out_shardings=(params_sharding, params_sharding, None),
+            out_shardings=(params_sharding, params_sharding, None, None),
         )
 
         jitted_eval = jax.jit(
@@ -201,13 +202,16 @@ def main(argv: list[str] | None = None) -> None:
             for raw in as_numpy_iterator(train_ds):
                 batch = _prepare_batch(raw, batch_sh)
                 key, sk = jax.random.split(key)
-                state, opt_state, loss = jitted_train(state, opt_state, batch, sk)
-                ema_state = ema.update(ema_state, state)
+                state, opt_state, loss, gnorm = jitted_train(state, opt_state, batch, sk)
+                ema_state = ema.update(ema_state, state, step)
                 step += 1
                 if step % cfg["train"].get("log_every", 50) == 0:
                     dt = time.time() - t0
                     ips = step * cfg["train"]["batch_size"] / dt
-                    print(f"step {step:>6}  loss {float(loss):.4f}  ips {ips:.1f}")
+                    print(
+                        f"step {step:>6}  loss {float(loss):.4f}  "
+                        f"gnorm {float(gnorm):.3f}  ips {ips:.1f}"
+                    )
 
     print("done")
 
