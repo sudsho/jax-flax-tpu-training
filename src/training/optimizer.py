@@ -105,13 +105,30 @@ def build_optimizer(cfg: dict, total_steps: int) -> optax.GradientTransformation
 
 @dataclass
 class EMA:
-    """Simple polyak-averaged param tracker."""
+    """Simple polyak-averaged param tracker.
+
+    step-aware warmup: for the first ~1/(1-decay) steps we use a growing
+    effective decay to stop the EMA from being dominated by the first sample.
+    """
 
     decay: float = 0.9999
 
     def init(self, params):
         return jax.tree_util.tree_map(lambda x: x, params)
 
-    def update(self, ema_state, new_params):
-        d = self.decay
-        return jax.tree_util.tree_map(lambda e, p: e * d + p * (1.0 - d), ema_state, new_params)
+    def effective_decay(self, step: jax.Array | int) -> jax.Array:
+        step = jnp.asarray(step, dtype=jnp.float32)
+        return jnp.minimum(self.decay, (1.0 + step) / (10.0 + step))
+
+    def update(self, ema_state, new_params, step: jax.Array | int = 0):
+        d = self.effective_decay(step)
+        return jax.tree_util.tree_map(
+            lambda e, p: e * d + p * (1.0 - d), ema_state, new_params
+        )
+
+
+def flatten_grads_norm(grads) -> jax.Array:
+    """Global grad norm (diagnostic; also used by clip)."""
+    flat = jax.tree_util.tree_leaves(grads)
+    sq = sum(jnp.sum(x**2) for x in flat)
+    return jnp.sqrt(sq)
