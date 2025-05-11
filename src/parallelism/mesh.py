@@ -20,6 +20,9 @@ from jax.sharding import Mesh
 AXIS_DATA = "data"
 AXIS_MODEL = "model"
 
+# order matters - jax uses it when building NamedSharding partition specs
+AXIS_ORDER: tuple[str, ...] = (AXIS_DATA, AXIS_MODEL)
+
 
 @dataclass
 class MeshConfig:
@@ -51,3 +54,13 @@ def build_mesh(cfg: MeshConfig | None = None) -> Mesh:
 def describe(mesh: Mesh) -> str:
     shape = ", ".join(f"{name}={size}" for name, size in mesh.shape.items())
     return f"Mesh({shape}) on {mesh.size} devices ({jax.devices()[0].platform})"
+
+
+def validate_axes(mesh: Mesh) -> None:
+    """Guard against silently getting a mesh with unexpected axis names."""
+    got = tuple(mesh.axis_names)
+    if got != AXIS_ORDER:
+        raise ValueError(
+            f"mesh axis names {got} do not match expected {AXIS_ORDER}; "
+            "shardings elsewhere in the codebase assume (data, model) order"
+        )
