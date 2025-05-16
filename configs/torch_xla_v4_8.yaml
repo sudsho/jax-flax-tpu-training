@@ -1,0 +1,31 @@
+run_name: vit_b16_torch_xla_v4_8
+
+data:
+  dataset: imagenette
+  num_classes: 10
+
+model:
+  image_size: 224
+  patch_size: 16
+  num_classes: 10
+  hidden_size: 768
+  num_layers: 12
+  num_heads: 12
+  mlp_dim: 3072
+  dropout_rate: 0.0
+
+optim:
+  base_lr: 1.0e-3
+  weight_decay: 0.05
+  warmup_steps: 500
+  grad_clip: 1.0
+
+train:
+  batch_size_per_core: 64  # 8 cores * 64 = 512
+  num_epochs: 90
+  log_every: 50
+  label_smoothing: 0.1
+
+xla:
+  num_cores: 8
+  compile_only: false

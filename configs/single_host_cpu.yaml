@@ -1,0 +1,45 @@
+run_name: vit_s16_cpu_smoke
+
+data:
+  dataset: imagenette
+  data_dir: null
+  num_classes: 10
+
+model:
+  image_size: 224
+  patch_size: 16
+  num_classes: 10
+  hidden_size: 384
+  num_layers: 6
+  num_heads: 6
+  mlp_dim: 1536
+  dropout_rate: 0.0
+  attention_dropout_rate: 0.0
+
+mesh:
+  data_parallel: -1
+  model_parallel: 1
+
+optim:
+  base_lr: 3.0e-4
+  weight_decay: 0.05
+  warmup_steps: 100
+  grad_clip: 1.0
+  ema_decay: 0.999
+
+train:
+  batch_size: 32
+  num_epochs: 1
+  grad_accum_steps: 1
+  label_smoothing: 0.1
+  log_every: 20
+  eval_every: 100
+
+checkpoint:
+  directory: outputs/ckpt-cpu-smoke
+  keep_last: 2
+  save_interval_steps: 200
+
+wandb:
+  project: jax-vit-smoke
+  entity: null

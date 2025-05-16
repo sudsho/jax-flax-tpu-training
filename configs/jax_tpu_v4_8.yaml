@@ -1,0 +1,48 @@
+run_name: vit_b16_jax_tpu_v4_8
+
+data:
+  dataset: imagenette
+  data_dir: null  # tfds default
+  num_classes: 10
+
+model:
+  image_size: 224
+  patch_size: 16
+  num_classes: 10
+  hidden_size: 768
+  num_layers: 12
+  num_heads: 12
+  mlp_dim: 3072
+  dropout_rate: 0.0
+  attention_dropout_rate: 0.0
+
+mesh:
+  data_parallel: -1  # use all data axis
+  model_parallel: 2
+
+optim:
+  base_lr: 1.0e-3
+  weight_decay: 0.05
+  warmup_steps: 500
+  grad_clip: 1.0
+  beta1: 0.9
+  beta2: 0.999
+  eps: 1.0e-8
+  ema_decay: 0.9999
+
+train:
+  batch_size: 512
+  num_epochs: 90
+  grad_accum_steps: 1
+  label_smoothing: 0.1
+  log_every: 50
+  eval_every: 500
+
+checkpoint:
+  directory: gs://vit-jax-checkpoints/exp-tpu-v4-8
+  keep_last: 3
+  save_interval_steps: 1000
+
+wandb:
+  project: jax-vit-tpu
+  entity: null
