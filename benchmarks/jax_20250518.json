@@ -1,0 +1,16 @@
+{
+  "framework": "jax",
+  "jax_version": "0.4.35",
+  "flax_version": "0.10.2",
+  "slice": "v4-8",
+  "mesh": {"data": 4, "model": 2},
+  "batch_size": 512,
+  "image_size": 224,
+  "warmup": 5,
+  "steps": 100,
+  "compile_s": 42.1,
+  "dt_s": 17.4,
+  "step_ms": 174.0,
+  "ips": 2942.5,
+  "notes": "pjit, bf16 accum on QKV, replicated params, async orbax to gs://vit-jax-checkpoints"
+}
