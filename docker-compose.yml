@@ -1,0 +1,35 @@
+services:
+  cpu-dev:
+    build:
+      context: .
+      target: cpu
+    image: jax-vit-cpu:local
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+      - vit-jax-cache:/root/.cache
+    environment:
+      JAX_PLATFORMS: cpu
+      WANDB_MODE: offline
+    command:
+      - python
+      - -m
+      - src.training.train_jax
+      - --config
+      - configs/single_host_cpu.yaml
+
+  test:
+    build:
+      context: .
+      target: cpu
+    image: jax-vit-cpu:local
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+    command:
+      - pytest
+      - tests/
+      - -q
+
+volumes:
+  vit-jax-cache: {}
