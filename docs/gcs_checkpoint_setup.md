@@ -73,6 +73,14 @@ EOF
 gcloud storage buckets update gs://$BUCKET --lifecycle-file=/tmp/lifecycle.json
 ```
 
+## 5b. Multi-host slice caveat
+
+On a v4-32 or larger slice orbax writes from every host process. Point
+every host at the same `gs://` prefix; orbax coordinates writes with an
+internal barrier. If you set a *local* directory instead, each host
+writes to its own worker disk, and restore silently loads whichever
+happens to be on rank 0 which is almost never what you want.
+
 ## 6. Cost note
 
 Standard storage at $0.020/GB-month. A single ViT-B/16 fp32 checkpoint is
