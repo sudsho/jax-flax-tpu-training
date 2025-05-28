@@ -1,0 +1,41 @@
+# Copy or symlink to .github/workflows/test.yml to activate.
+# Kept out of the .github path because our push token doesn't carry the
+# `workflow` scope; local runs work fine either way.
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  cpu-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: set up python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: lint
+        run: |
+          pip install ruff
+          ruff check src tests
+
+      - name: pytest
+        env:
+          JAX_PLATFORMS: cpu
+        run: |
+          pytest tests/ -q
