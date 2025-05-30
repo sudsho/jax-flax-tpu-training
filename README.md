@@ -181,6 +181,13 @@ one epoch of ImageNet-1k takes roughly 8 min at bs=512.
 - JAX Sharding: https://jax.readthedocs.io/en/latest/notebooks/Distributed_arrays_and_automatic_parallelization.html
 - Orbax: https://orbax.readthedocs.io/en/latest/
 
+## Environment
+
+Copy `.env.example` to `.env` and fill in your GCS bucket and (optional)
+wandb key before running on a TPU-VM. See
+[docs/tpu_pod_slice_notes.md](docs/tpu_pod_slice_notes.md) for
+`JAX_COMPILATION_CACHE_DIR` and the `libtpu` vs `jax` version pitfall.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
