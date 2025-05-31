@@ -12,7 +12,7 @@ same v4-8 slice, same global batch, same optimizer, same schedule. See
 
 Vision Transformers are the canonical stress test for a TPU training
 stack: dense attention, big MLPs, and enough parameters that both
-tensor-parallel and data-parallel sharding matter. Reproducing ViT-B/16
+tensor-parallel and data-parallel sharding matter. This repo reproduces ViT-B/16
 in the modern Flax NNX API on a v4-8 slice is a compact way to
 exercise:
 

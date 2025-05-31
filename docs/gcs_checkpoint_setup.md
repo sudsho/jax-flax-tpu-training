@@ -84,5 +84,5 @@ happens to be on rank 0 which is almost never what you want.
 ## 6. Cost note
 
 Standard storage at $0.020/GB-month. A single ViT-B/16 fp32 checkpoint is
-~350 MB (~90M params x 4 bytes). Keeping 3 checkpoints for 12 experiments
+~350 MB (~90M params x 4 bytes). Three checkpoints for 12 experiments
 = 12 GB, about $0.25/month. Cheap.
