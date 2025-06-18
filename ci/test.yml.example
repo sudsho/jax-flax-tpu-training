@@ -1,6 +1,3 @@
-# Copy or symlink to .github/workflows/test.yml to activate.
-# Kept out of the .github path because our push token doesn't carry the
-# `workflow` scope; local runs work fine either way.
 name: tests
 
 on:

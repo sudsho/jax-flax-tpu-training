@@ -2,13 +2,9 @@ jax==0.4.35
 jaxlib==0.4.35
 flax==0.10.2
 optax==0.2.4
-chex==0.1.87
 orbax-checkpoint==0.10.1
 tensorflow-datasets==4.9.7
 wandb==0.19.6
 numpy==2.2.4
-pillow==11.1.0
-gcsfs==2025.2.0
-tqdm==4.67.1
 pyyaml>=6.0
 pytest==8.3.4
