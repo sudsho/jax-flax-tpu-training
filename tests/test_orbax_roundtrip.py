@@ -3,7 +3,7 @@ import shutil
 from pathlib import Path
 
 import jax
-import jax.numpy as jnp
+import numpy as np
 import pytest
 from flax import nnx
 
@@ -39,7 +39,8 @@ def test_save_and_restore_roundtrip(tmp_ckpt_dir):
     restored = mgr.restore_latest(template)
     assert restored is not None
     jax.tree_util.tree_map(
-        lambda a, b: jnp.testing.assert_allclose(a, b) if hasattr(a, "shape") else None,
+        lambda a, b: np.testing.assert_allclose(np.asarray(a), np.asarray(b))
+        if hasattr(a, "shape") else None,
         state,
         restored["state"],
     )

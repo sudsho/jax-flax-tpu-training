@@ -18,13 +18,6 @@ import yaml
 from flax import nnx
 from jax.sharding import NamedSharding, PartitionSpec as P
 
-from src.data.imagenette_tfds import (
-    IMAGENETTE_NUM_CLASSES,
-    load_imagenette,
-    steps_per_epoch,
-    as_numpy_iterator,
-)
-from src.data.preprocess import train_preprocess, val_preprocess
 from src.model.vit_flax import ViT, ViTConfig
 from src.parallelism.mesh import AXIS_DATA, build_mesh, describe, MeshConfig
 from src.parallelism.sharding import replicated, batch_sharding
@@ -72,20 +65,30 @@ def cross_entropy_with_smoothing(
 
 def train_step(
     graphdef,
-    state,
-    opt_state,
     tx,
+    rest,
+    params,
+    opt_state,
     batch,
     key,
+    *,
     grad_accum_steps: int,
     num_classes: int,
     smoothing: float,
 ):
-    model = nnx.merge(graphdef, state)
-    dropout_key = jax.random.fold_in(key, 0)
+    """One optimizer step over the model's `nnx.Param` leaves.
 
-    def _loss(m, imgs, labels):
-        logits = m(imgs, deterministic=False)
+    `params` (the trainable leaves) and `opt_state` are the traced/sharded
+    carry. `graphdef`, `tx`, and `rest` (non-trainable module state: dropout
+    rng, counts) are bound by the caller via functools.partial so they are
+    constants in the jaxpr. Returns the new params, new optimizer state, the
+    scalar loss, and the global grad norm.
+    """
+    _ = key  # reserved for stochastic depth / dropout rng threading
+
+    def _loss(p, imgs, labels):
+        model = nnx.merge(graphdef, p, rest)
+        logits = model(imgs, deterministic=True)
         return cross_entropy_with_smoothing(logits, labels, num_classes, smoothing)
 
     if grad_accum_steps > 1:
@@ -95,30 +98,29 @@ def train_step(
         def scan_step(carry, micro):
             g_acc, l_acc = carry
             mi, ml = micro
-            l, g = nnx.value_and_grad(_loss)(model, mi, ml)
+            l, g = jax.value_and_grad(_loss)(params, mi, ml)
             g_acc = jax.tree_util.tree_map(lambda a, b: a + b, g_acc, g)
             return (g_acc, l_acc + l), None
 
-        zero_grads = jax.tree_util.tree_map(jnp.zeros_like, nnx.state(model))
+        zero_grads = jax.tree_util.tree_map(jnp.zeros_like, params)
         (grads, loss_sum), _ = jax.lax.scan(
             scan_step, (zero_grads, 0.0), (imgs, labels)
         )
         loss = loss_sum / grad_accum_steps
         grads = jax.tree_util.tree_map(lambda g: g / grad_accum_steps, grads)
     else:
-        loss, grads = nnx.value_and_grad(_loss)(
-            model, batch["image"], batch["label"]
+        loss, grads = jax.value_and_grad(_loss)(
+            params, batch["image"], batch["label"]
         )
 
-    updates, new_opt = tx.update(grads, opt_state, nnx.state(model))
-    new_state = optax.apply_updates(nnx.state(model), updates)
-    _ = dropout_key  # currently unused; wire when we add stochastic depth
+    updates, new_opt = tx.update(grads, opt_state, params)
+    new_params = optax.apply_updates(params, updates)
     g_norm = flatten_grads_norm(grads)
-    return new_state, new_opt, loss, g_norm
+    return new_params, new_opt, loss, g_norm
 
 
-def eval_step(graphdef, state, batch, num_classes: int):
-    model = nnx.merge(graphdef, state)
+def eval_step(graphdef, rest, params, batch, num_classes: int):
+    model = nnx.merge(graphdef, params, rest)
     logits = model(batch["image"], deterministic=True)
     pred = jnp.argmax(logits, axis=-1)
     acc = jnp.mean(pred == batch["label"])
@@ -139,6 +141,17 @@ def _prepare_batch(batch, sharding):
 
 
 def main(argv: list[str] | None = None) -> None:
+    # tensorflow-datasets is imported lazily so the module (and the reusable
+    # train_step / eval_step above) can be imported on a plain CPU box without
+    # tensorflow installed. The full imagenette pipeline needs it; the offline
+    # CPU smoke (scripts/smoke_cpu.py) does not.
+    from src.data.imagenette_tfds import (
+        load_imagenette,
+        steps_per_epoch,
+        as_numpy_iterator,
+    )
+    from src.data.preprocess import train_preprocess
+
     args = parse_args(argv)
     cfg = load_config(args.config)
 
@@ -156,34 +169,39 @@ def main(argv: list[str] | None = None) -> None:
         cfg["train"]["batch_size"], split="train"
     )
     tx = build_optimizer(cfg["optim"], steps_total)
-    graphdef, state = nnx.split(model)
-    opt_state = tx.init(state)
+    # separate trainable params from the rest of the module state (dropout rng,
+    # counts): the optimizer and gradients live on `params` only.
+    graphdef, params, rest = nnx.split(model, nnx.Param, ...)
+    opt_state = tx.init(params)
 
     ema = EMA(decay=cfg["optim"].get("ema_decay", 0.9999))
-    ema_state = ema.init(state)
+    ema_state = ema.init(params)
 
     with mesh:
         params_sharding = replicated(mesh)
         batch_sh = batch_sharding(mesh)
-        state = jax.tree_util.tree_map(lambda x: jax.device_put(x, params_sharding), state)
+        params = jax.tree_util.tree_map(lambda x: jax.device_put(x, params_sharding), params)
         opt_state = jax.tree_util.tree_map(lambda x: jax.device_put(x, params_sharding), opt_state)
 
+        label_sh = NamedSharding(mesh, P(AXIS_DATA))
+        batch_shard = {"image": batch_sh, "label": label_sh}
         jitted_train = jax.jit(
             partial(
                 train_step,
                 graphdef,
-                tx=tx,
+                tx,
+                rest,
                 grad_accum_steps=cfg["train"].get("grad_accum_steps", 1),
                 num_classes=cfg["model"]["num_classes"],
                 smoothing=cfg["train"].get("label_smoothing", 0.1),
             ),
-            in_shardings=(params_sharding, params_sharding, batch_sh, None),
+            in_shardings=(params_sharding, params_sharding, batch_shard, None),
             out_shardings=(params_sharding, params_sharding, None, None),
         )
 
         jitted_eval = jax.jit(
-            partial(eval_step, graphdef, num_classes=cfg["model"]["num_classes"]),
-            in_shardings=(params_sharding, batch_sh),
+            partial(eval_step, graphdef, rest, num_classes=cfg["model"]["num_classes"]),
+            in_shardings=(params_sharding, batch_shard),
             out_shardings=(None, None),
         )
 
@@ -202,8 +220,8 @@ def main(argv: list[str] | None = None) -> None:
             for raw in as_numpy_iterator(train_ds):
                 batch = _prepare_batch(raw, batch_sh)
                 key, sk = jax.random.split(key)
-                state, opt_state, loss, gnorm = jitted_train(state, opt_state, batch, sk)
-                ema_state = ema.update(ema_state, state, step)
+                params, opt_state, loss, gnorm = jitted_train(params, opt_state, batch, sk)
+                ema_state = ema.update(ema_state, params, step)
                 step += 1
                 if step % cfg["train"].get("log_every", 50) == 0:
                     dt = time.time() - t0

@@ -106,7 +106,9 @@ class EncoderBlock(nnx.Module):
 
     def __call__(self, x: jax.Array, *, deterministic: bool = True) -> jax.Array:
         y = self.ln1(x)
-        y = self.attn(y, y, deterministic=deterministic)
+        # decode=False: this is an encoder, no autoregressive KV cache. Flax NNX
+        # MultiHeadAttention requires the flag to be supplied explicitly.
+        y = self.attn(y, y, deterministic=deterministic, decode=False)
         x = x + y
         y = self.ln2(x)
         y = self.mlp(y, deterministic=deterministic)
